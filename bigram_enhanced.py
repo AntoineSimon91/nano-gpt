@@ -94,10 +94,38 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.proj = nn.Linear(n_embd, n_embd)
+    def forward(self, x):
+        out=  torch.cat([head(x) for head in self.heads], dim=-1)
+        out = self.proj(out)
+        return out
+
+
+class FeedForward(nn.Module):
+    def __init__(self, n_embd):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_embd, n_embd),
+            nn.ReLU(),
+            nn.Linear(n_embd, n_embd),
+        )
 
     def forward(self, x):
-        return torch.cat([head(x) for head in self.heads], dim=-1)
+        return self.net(x)
 
+
+class Block(nn.Module):
+    def __init__(self, n_embd, num_heads):
+        super().__init__()
+        head_size = n_embd // num_heads # each head has a size of n_embd / num_heads
+        self.multi_head_attention = MultiHeadAttention(num_heads, head_size) # multi-head attention
+        self.feed_forward = FeedForward(n_embd) # feed forward network
+
+    def forward(self, x):
+        x = x + self.multi_head_attention(x) # apply multi-head attention
+        x = x + self.feed_forward(x) # apply feed forward network
+
+        return x
 
 class BigramLanguageModel(nn.Module):
 
@@ -106,18 +134,22 @@ class BigramLanguageModel(nn.Module):
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # each token gets its own embedding
         self.position_embedding_table = nn.Embedding(block_size, n_embd) # each position gets its own embedding
-        self.multi_head_attention = MultiHeadAttention(4, n_embd//4) # 4 heads of 8-dimensional self-attention
+        self.blocks = nn.Sequential(
+            Block(n_embd, num_heads=4),
+            Block(n_embd, num_heads=4),
+            Block(n_embd, num_heads=4)
+        )
         self.lm_head = nn.Linear(n_embd, vocab_size) # maps the embedding to the vocabulary size
 
 
     def forward(self, idx, targets=None):
-        B, T = idx.shape
 
-        # idx and targets are both (B,T) tensor of integers
+        B, T = idx.shape # B is batch size, T is sequence length
         tok_emb = self.token_embedding_table(idx) # (B,T,C)
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)
-        x = tok_emb + pos_emb
-        x = self.multi_head_attention(x)
+        x = tok_emb + pos_emb # (B,T,C)
+        x = self.multi_head_attention(x) # apply multi-head attention
+        x = self.feed_forward(x) # apply feed forward network
         logits = self.lm_head(x) # (B,T,vocab_size)
 
 
