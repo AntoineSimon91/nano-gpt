@@ -120,10 +120,12 @@ class Block(nn.Module):
         head_size = n_embd // num_heads # each head has a size of n_embd / num_heads
         self.multi_head_attention = MultiHeadAttention(num_heads, head_size) # multi-head attention
         self.feed_forward = FeedForward(n_embd) # feed forward network
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x):
-        x = x + self.multi_head_attention(x) # apply multi-head attention
-        x = x + self.feed_forward(x) # apply feed forward network
+        x = x + self.multi_head_attention(self.ln1(x)) # apply multi-head attention
+        x = x + self.feed_forward(self.ln2(x)) # apply feed forward network
 
         return x
 
@@ -137,7 +139,8 @@ class BigramLanguageModel(nn.Module):
         self.blocks = nn.Sequential(
             Block(n_embd, num_heads=4),
             Block(n_embd, num_heads=4),
-            Block(n_embd, num_heads=4)
+            Block(n_embd, num_heads=4),
+            nn.LayerNorm(n_embd)
         )
         self.lm_head = nn.Linear(n_embd, vocab_size) # maps the embedding to the vocabulary size
 
@@ -148,10 +151,8 @@ class BigramLanguageModel(nn.Module):
         tok_emb = self.token_embedding_table(idx) # (B,T,C)
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T,C)
         x = tok_emb + pos_emb # (B,T,C)
-        x = self.multi_head_attention(x) # apply multi-head attention
-        x = self.feed_forward(x) # apply feed forward network
+        x = self.blocks(x) # apply the blocks
         logits = self.lm_head(x) # (B,T,vocab_size)
-
 
         if targets is None:
             loss = None
