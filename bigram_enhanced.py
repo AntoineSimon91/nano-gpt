@@ -108,6 +108,7 @@ class FeedForward(nn.Module):
             nn.Linear(n_embd, n_embd),
             nn.ReLU(),
             nn.Linear(n_embd, n_embd),
+            nn.Dropout(dropout)
         )
 
     def forward(self, x):
